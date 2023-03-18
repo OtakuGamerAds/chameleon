@@ -2,11 +2,13 @@ package mchorse.chameleon;
 
 import mchorse.chameleon.mclib.ValueButtons;
 import mchorse.mclib.McLib;
+import mchorse.mclib.commands.utils.L10n;
 import mchorse.mclib.config.ConfigBuilder;
 import mchorse.mclib.events.RegisterConfigEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.SidedProxy;
+import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
@@ -36,5 +38,13 @@ public class Chameleon
 
         /* General */
         builder.category("general").register(new ValueButtons("buttons").clientSide());
+    }
+
+    /* registering commands stuff */
+    public static L10n l10n = new L10n(MOD_ID);
+    @EventHandler
+    public void load(FMLInitializationEvent event)
+    {
+        proxy.load(event);
     }
 }

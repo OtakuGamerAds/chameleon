@@ -1,6 +1,7 @@
 package mchorse.chameleon;
 
 import mchorse.chameleon.client.ChameleonPack;
+import mchorse.chameleon.commands.CommandChameleonModel;
 import mchorse.chameleon.lib.ChameleonLoader;
 import mchorse.chameleon.lib.ChameleonModel;
 import mchorse.chameleon.lib.MolangHelper;
@@ -11,6 +12,9 @@ import mchorse.mclib.math.Variable;
 import mchorse.mclib.math.molang.MolangParser;
 import mchorse.mclib.utils.ReflectionUtils;
 import mchorse.mclib.utils.files.GlobalTree;
+import net.minecraft.client.Minecraft;
+import net.minecraftforge.client.ClientCommandHandler;
+import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -21,11 +25,12 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @SideOnly(Side.CLIENT)
 public class ClientProxy extends CommonProxy
 {
-    public static final Map<String, ChameleonModel> chameleonModels = new HashMap<String, ChameleonModel>();
+    public static ConcurrentHashMap<String, ChameleonModel> chameleonModels = new ConcurrentHashMap<>();
     public static final MolangParser parser;
 
     public static ChameleonPack pack;
@@ -74,6 +79,12 @@ public class ClientProxy extends CommonProxy
         {
             return;
         }
+
+        // Call the cleanup method for each model and clear the chameleonModels map
+        for (ChameleonModel model : chameleonModels.values()) {
+            model.cleanup();
+        }
+        chameleonModels.clear();
 
         List<String> toCheck = new ArrayList<String>(chameleonModels.keySet());
 
@@ -196,5 +207,22 @@ public class ClientProxy extends CommonProxy
     public Collection<String> getModelKeys()
     {
         return chameleonModels.keySet();
+    }
+
+    @Override
+    public void clearModels() {
+        for (ChameleonModel model : chameleonModels.values()) {
+            model.cleanup();
+        }
+        chameleonModels.clear();
+    }
+
+    /* registering commands */
+    @Override
+    public void load(FMLInitializationEvent event)
+    {
+        Minecraft mc = Minecraft.getMinecraft();
+        /* Client commands */
+        ClientCommandHandler.instance.registerCommand(new CommandChameleonModel());
     }
 }

@@ -14,8 +14,11 @@ import mchorse.chameleon.metamorph.pose.AnimatedPose;
 import mchorse.chameleon.metamorph.pose.AnimatedPoseTransform;
 import mchorse.chameleon.metamorph.pose.PoseAnimation;
 import mchorse.mclib.client.render.RenderLightmap;
+import mchorse.mclib.client.render.VertexBuilder;
+import mchorse.mclib.utils.Color;
 import mchorse.mclib.utils.Interpolations;
 import mchorse.mclib.utils.MatrixUtils;
+import mchorse.mclib.utils.ReflectionUtils;
 import mchorse.mclib.utils.resources.RLUtils;
 import mchorse.metamorph.api.models.IMorphProvider;
 import mchorse.metamorph.api.morphs.AbstractMorph;
@@ -27,8 +30,12 @@ import mchorse.metamorph.bodypart.BodyPart;
 import mchorse.metamorph.bodypart.BodyPartManager;
 import mchorse.metamorph.bodypart.IBodyPartProvider;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.client.renderer.texture.ITextureObject;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.TextureManager;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
@@ -38,7 +45,15 @@ import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 
+import javax.imageio.ImageIO;
+import javax.vecmath.Vector4d;
+import javax.vecmath.Vector4f;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.Objects;
 
 public class ChameleonMorph extends AbstractMorph implements IBodyPartProvider, ISyncableMorph, IAnimationProvider, IMorphGenerator
@@ -138,7 +153,7 @@ public class ChameleonMorph extends AbstractMorph implements IBodyPartProvider, 
 
         this.animation.last = pose == null ? (previous == null ? this.pose : new AnimatedPose()) : pose;
         this.parts.pause(previous, offset);
-        
+
         this.updateAnimator = true;
     }
 
@@ -200,29 +215,164 @@ public class ChameleonMorph extends AbstractMorph implements IBodyPartProvider, 
         this.updateAnimator = true;
     }
 
+    private ResourceLocation thumbnailResourceLocation;
+    private int[] thumbnailDimensions;
+    private boolean isModelRendered;
+
+    private int displayListId = -1;
+
     @Override
     @SideOnly(Side.CLIENT)
-    public void renderOnScreen(EntityPlayer target, int x, int y, float scale, float alpha)
-    {
+    public void renderOnScreen(EntityPlayer target, int x, int y, float scale, float alpha) {
         scale *= this.scaleGui;
 
         GlStateManager.enableDepth();
         GlStateManager.pushMatrix();
-        GlStateManager.translate(x, y, 0);
-        GlStateManager.scale(scale, scale, scale);
-        GlStateManager.rotate(45.0F, -1.0F, 0.0F, 0.0F);
-        GlStateManager.rotate(135.0F, 0.0F, -1.0F, 0.0F);
-        GlStateManager.rotate(180.0F, 0.0F, 0.0F, 1.0F);
 
         RenderHelper.enableStandardItemLighting();
 
-        this.renderModel(target, 0F);
+        if (this.getModel().thumbnailFullPath != null) {
+            if (thumbnailResourceLocation == null) {
+                thumbnailResourceLocation = getThumbnailResourceLocation();
+                thumbnailDimensions = getImageDimensions(thumbnailResourceLocation);
+            }
+
+            GlStateManager.translate(x, y - scale / 2, 0);
+            GlStateManager.scale(-1.5F, 1.5F, 1.5F);
+
+            this.renderPicture(scale);
+        } else {
+            if (displayListId == -1) {
+                displayListId = GLAllocation.generateDisplayLists(1);
+                GL11.glNewList(displayListId, GL11.GL_COMPILE);
+                this.renderModel(target, 0F);
+                GL11.glEndList();
+
+                // Store the display list id in the ChameleonModel instance
+                getModel().displayListId = displayListId;
+            }
+
+            GlStateManager.translate(x, y, 0);
+            GlStateManager.scale(scale, scale, scale);
+            GlStateManager.rotate(45.0F, -1.0F, 0.0F, 0.0F);
+            GlStateManager.rotate(135.0F, 0.0F, -1.0F, 0.0F);
+            GlStateManager.rotate(180.0F, 0.0F, 0.0F, 1.0F);
+            GL11.glCallList(displayListId);
+        }
 
         RenderHelper.disableStandardItemLighting();
 
         GlStateManager.popMatrix();
         GlStateManager.disableDepth();
     }
+
+    public void updateDisplayList() {
+        if (displayListId != -1) {
+            GLAllocation.deleteDisplayLists(displayListId);
+            displayListId = -1;
+        }
+    }
+
+    private void renderPicture(float scale) {
+        Minecraft.getMinecraft().renderEngine.bindTexture(thumbnailResourceLocation);
+
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder buffer = tessellator.getBuffer();
+
+        GlStateManager.color(1, 1, 1, 1);
+
+        buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX);
+
+        float width = scale * 0.5F;
+        float height = scale * 0.5F;
+
+        // Calculate the new texture coordinates for cropping
+        float aspectRatio = (float) thumbnailDimensions[0] / thumbnailDimensions[1];
+        float texCoordStart, texCoordEnd;
+
+        if (aspectRatio > 1) {
+            texCoordStart = (1.0F - (1.0F / aspectRatio)) / 2.0F;
+            texCoordEnd = 1.0F - texCoordStart;
+        } else {
+            texCoordStart = (1.0F - aspectRatio) / 2.0F;
+            texCoordEnd = 1.0F - texCoordStart;
+        }
+
+        if (aspectRatio > 1) {
+            buffer.pos(-width, height, 0.0F).tex(texCoordEnd, 1).endVertex();
+            buffer.pos(-width, -height, 0.0F).tex(texCoordEnd, 0).endVertex();
+            buffer.pos(width, -height, 0.0F).tex(texCoordStart, 0).endVertex();
+            buffer.pos(width, height, 0.0F).tex(texCoordStart, 1).endVertex();
+        } else {
+            buffer.pos(-width, height, 0.0F).tex(0, texCoordEnd).endVertex();
+            buffer.pos(-width, -height, 0.0F).tex(0, texCoordStart).endVertex();
+            buffer.pos(width, -height, 0.0F).tex(1, texCoordStart).endVertex();
+            buffer.pos(width, height, 0.0F).tex(1, texCoordEnd).endVertex();
+        }
+
+
+        float brightnessMultiplier = 2F;
+        float contrastMultiplier = 2F;
+        GlStateManager.color(contrastMultiplier, contrastMultiplier, contrastMultiplier, 1);
+        if (aspectRatio > 1) {
+            buffer.pos(-width, height, 0.0F).tex(texCoordEnd, 1).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+            buffer.pos(-width, -height, 0.0F).tex(texCoordEnd, 0).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+            buffer.pos(width, -height, 0.0F).tex(texCoordStart, 0).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+            buffer.pos(width, height, 0.0F).tex(texCoordStart, 1).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+        } else {
+            buffer.pos(-width, height, 0.0F).tex(0, texCoordEnd).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+            buffer.pos(-width, -height, 0.0F).tex(0, texCoordStart).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+            buffer.pos(width, -height, 0.0F).tex(1, texCoordStart).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+            buffer.pos(width, height, 0.0F).tex(1, texCoordEnd).color(brightnessMultiplier, brightnessMultiplier, brightnessMultiplier, 1.0F).endVertex();
+        }
+
+
+        tessellator.draw();
+
+        GlStateManager.disableBlend();
+    }
+
+
+    private ResourceLocation getThumbnailResourceLocation() {
+        String thumbnailPath = this.getModel().thumbnailFullPath;
+        if (thumbnailPath == null) {
+            return null;
+        }
+
+        try {
+            File thumbnailFile = new File(thumbnailPath);
+            BufferedImage thumbnailImage = ImageIO.read(thumbnailFile);
+            TextureManager textureManager = Minecraft.getMinecraft().getTextureManager();
+            String textureName = "chameleon_thumbnail_" + thumbnailFile.getParentFile().getName();
+            ResourceLocation thumbnailResourceLocation = new ResourceLocation("chameleon", textureName);
+            textureManager.loadTexture(thumbnailResourceLocation, new DynamicTexture(thumbnailImage));
+
+            return thumbnailResourceLocation;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private int[] getImageDimensions(ResourceLocation resourceLocation) {
+        ITextureObject textureObject = Minecraft.getMinecraft().getTextureManager().getTexture(resourceLocation);
+
+        if (textureObject instanceof TextureAtlasSprite) {
+            TextureAtlasSprite sprite = (TextureAtlasSprite) textureObject;
+            return new int[] {sprite.getIconWidth(), sprite.getIconHeight()};
+        } else {
+            int textureId = textureObject.getGlTextureId();
+            int[] dimensions = new int[2];
+            GlStateManager.bindTexture(textureId);
+            dimensions[0] = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_WIDTH);
+            dimensions[1] = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_HEIGHT);
+            return dimensions;
+        }
+    }
+
 
     @Override
     @SideOnly(Side.CLIENT)
@@ -490,7 +640,7 @@ public class ChameleonMorph extends AbstractMorph implements IBodyPartProvider, 
                 this.animation.merge(animated.animation);
                 this.scale = animated.scale;
                 this.scaleGui = animated.scaleGui;
-                
+
                 this.updateAnimator = true;
 
                 return true;
@@ -729,5 +879,15 @@ public class ChameleonMorph extends AbstractMorph implements IBodyPartProvider, 
         {
             this.isActionPlayer = tag.getBoolean("ActionPlayer");
         }
+    }
+
+    public static class ImageProperties
+    {
+        public Color color = new Color();
+        public Vector4f crop = new Vector4f();
+        public ModelTransform pose = new ModelTransform();
+        public float x;
+        public float y;
+        public float rotation;
     }
 }

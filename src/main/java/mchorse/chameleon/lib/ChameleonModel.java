@@ -3,6 +3,7 @@ package mchorse.chameleon.lib;
 import mchorse.chameleon.lib.data.animation.Animations;
 import mchorse.chameleon.lib.data.model.ModelBone;
 import mchorse.chameleon.lib.data.model.Model;
+import net.minecraft.client.renderer.GLAllocation;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
@@ -23,14 +24,34 @@ public class ChameleonModel
     private List<String> boneNames;
     private boolean isStatic;
     private List<File> files;
+    public String thumbnailFullPath;
 
-    public ChameleonModel(Model model, Animations animations, List<File> files, long lastUpdate)
-    {
+    public int displayListId = -1;
+
+    public ChameleonModel(Model model, Animations animations, List<File> files, long lastUpdate) {
         this.model = model;
         this.animations = animations;
         this.files = files;
         this.lastUpdate = lastUpdate;
         this.isStatic = animations == null || animations.getAll().isEmpty();
+
+        this.thumbnailFullPath = getThumbnailFullPath();
+    }
+
+    public String getThumbnailFullPath() {
+        String fullPath = null;
+
+        for (File file : this.files) {
+            if (file.getName().endsWith(".geo.json")) {
+                File thumbnailFile = new File(file.getParentFile(), "thumbnail.png");
+                if (thumbnailFile.exists()) {
+                    fullPath = thumbnailFile.getAbsolutePath();
+                    break;
+                }
+            }
+        }
+
+        return fullPath;
     }
 
     public List<String> getBoneNames()
@@ -89,4 +110,16 @@ public class ChameleonModel
 
         return true;
     }
+
+    public List<File> getFiles(){
+        return this.files;
+    }
+
+    public void cleanup() {
+        if (displayListId != -1) {
+            GLAllocation.deleteDisplayLists(displayListId);
+            displayListId = -1;
+        }
+    }
+
 }

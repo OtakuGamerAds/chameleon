@@ -76,33 +76,44 @@ public class Animator
         this.refresh();
     }
 
-    public void refresh()
-    {
+    public void refresh() {
         ActionsConfig actions = this.morph.actions;
 
-        this.idle = this.createAction(this.idle, actions.getConfig("idle"), true);
-        this.running = this.createAction(this.running, actions.getConfig("running"), true);
-        this.sprinting = this.createAction(this.sprinting, actions.getConfig("sprinting"), true);
-        this.crouching = this.createAction(this.crouching, actions.getConfig("crouching"), true);
-        this.crouchingIdle = this.createAction(this.crouchingIdle, actions.getConfig("crouching_idle"), true);
-        this.swimming = this.createAction(this.swimming, actions.getConfig("swimming"), true);
-        this.swimmingIdle = this.createAction(this.swimmingIdle, actions.getConfig("swimming_idle"), true);
-        this.flying = this.createAction(this.flying, actions.getConfig("flying"), true);
-        this.flyingIdle = this.createAction(this.flyingIdle, actions.getConfig("flying_idle"), true);
-        this.riding = this.createAction(this.riding, actions.getConfig("riding"), true);
-        this.ridingIdle = this.createAction(this.ridingIdle, actions.getConfig("riding_idle"), true);
-        this.dying = this.createAction(this.dying, actions.getConfig("dying"), false);
-        this.falling = this.createAction(this.falling, actions.getConfig("falling"), true);
-        this.sleeping = this.createAction(this.sleeping, actions.getConfig("sleeping"), true);
+        this.idle = createActionWithCheck(this.idle, actions, "idle", true);
+        this.running = createActionWithCheck(this.running, actions, "running", true);
+        this.sprinting = createActionWithCheck(this.sprinting, actions, "sprinting", true);
+        this.crouching = createActionWithCheck(this.crouching, actions, "crouching", true);
+        this.crouchingIdle = createActionWithCheck(this.crouchingIdle, actions, "crouching_idle", true);
+        this.swimming = createActionWithCheck(this.swimming, actions, "swimming", true);
+        this.swimmingIdle = createActionWithCheck(this.swimmingIdle, actions, "swimming_idle", true);
+        this.flying = createActionWithCheck(this.flying, actions, "flying", true);
+        this.flyingIdle = createActionWithCheck(this.flyingIdle, actions, "flying_idle", true);
+        this.riding = createActionWithCheck(this.riding, actions, "riding", true);
+        this.ridingIdle = createActionWithCheck(this.ridingIdle, actions, "riding_idle", true);
+        this.dying = createActionWithCheck(this.dying, actions, "dying", false);
+        this.falling = createActionWithCheck(this.falling, actions, "falling", true);
+        this.sleeping = createActionWithCheck(this.sleeping, actions, "sleeping", true);
+        this.swipe = createActionWithCheck(this.swipe, actions, "swipe", false);
+        this.jump = createActionWithCheck(this.jump, actions, "jump", false, 2);
+        this.hurt = createActionWithCheck(this.hurt, actions, "hurt", false, 3);
+        this.land = createActionWithCheck(this.land, actions, "land", false);
+        this.shoot = createActionWithCheck(this.shoot, actions, "shoot", true);
+        this.consume = createActionWithCheck(this.consume, actions, "consume", true);
+        this.animation = createActionWithCheck(this.animation, actions, "animation", false);
+    }
 
-        this.swipe = this.createAction(this.swipe, actions.getConfig("swipe"), false);
-        this.jump = this.createAction(this.jump, actions.getConfig("jump"), false, 2);
-        this.hurt = this.createAction(this.hurt, actions.getConfig("hurt"), false, 3);
-        this.land = this.createAction(this.land, actions.getConfig("land"), false);
-        this.shoot = this.createAction(this.shoot, actions.getConfig("shoot"), true);
-        this.consume = this.createAction(this.consume, actions.getConfig("consume"), true);
+    private ActionPlayback createActionWithCheck(ActionPlayback old, ActionsConfig actions, String actionKey, boolean loop) {
+        return createActionWithCheck(old, actions, actionKey, loop, 1);
+    }
 
-        this.animation = this.createAction(this.animation, actions.getConfig("animation"), false);
+    private ActionPlayback createActionWithCheck(ActionPlayback old, ActionsConfig actions, String actionKey, boolean loop, int priority) {
+        String nullString = "\"null\"";
+        String actionName = (actions.getConfig(actionKey).toNBT()).toString();
+        if (!actionName.equals(nullString)) {
+            return this.createAction(old, actions.getConfig(actionKey), loop, priority);
+        } else {
+            return this.createAction(old, actions.getConfig(null), false, priority);
+        }
     }
 
     /**

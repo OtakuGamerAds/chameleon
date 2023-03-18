@@ -21,11 +21,19 @@ public class ChameleonSection extends MorphSection
         super(title);
     }
 
+
+    public static HashMap<String, FolderEntry> skinsMap = new HashMap<>();
+
+    private FolderEntry getSkinsForKey(String key)
+    {
+        return skinsMap.get(key);
+    }
+
+
     @Override
     public void update(World world)
     {
         /* Reload models */
-        Chameleon.proxy.reloadModels();
 
         this.categories.clear();
 
@@ -34,7 +42,7 @@ public class ChameleonSection extends MorphSection
         for (String key : Chameleon.proxy.getModelKeys())
         {
             ChameleonMorph morph = new ChameleonMorph();
-            FolderEntry skins = ClientProxy.tree.getByPath(key + "/skins/", null);
+            FolderEntry skins = getSkinsForKey(key);
 
             if (skins != null)
             {
@@ -50,7 +58,6 @@ public class ChameleonSection extends MorphSection
             }
 
             morph.name = "chameleon." + key;
-
             String categoryKey = key.contains("/") ? key.substring(0, key.lastIndexOf("/")) : "";
             ChameleonCategory category = categories.get(categoryKey);
 
